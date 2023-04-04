@@ -1,104 +1,82 @@
-import org.Generalov.database.Database;
-import org.Generalov.service.User;
-import org.Generalov.utils.GetProperties;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
+import org.example.database.dao.UserDao;
+import org.example.database.entity.User;
+import org.example.utils.SpringConfig;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
+import org.springframework.test.jdbc.JdbcTestUtils;
 
-import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 
+@ExtendWith(SpringExtension.class)
+@ContextConfiguration(classes = {SpringConfig.class})
 public class DatabaseTest {
-    private Database database = Database.getObjectDatabaseControl();
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+    @Value("${initSql}")
+    private String initSql;
+    @Value("${dataSql}")
+    private String dataSql;
+    @Autowired
+    private UserDao userDao;
+    private User user;
 
-    @BeforeAll
-    public static void start() {
-        try {
-            SqlRunner.executeSqlFile(GetProperties.PATH_TO_INIT_SQL);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+    {
+        user = new User(1, "galik1", "123345", false);
+    }
+
+    @BeforeEach
+    public void start() {
+        ResourceDatabasePopulator tables = new ResourceDatabasePopulator();
+        tables.addScript(new ClassPathResource(initSql));
+        tables.addScript(new ClassPathResource(dataSql));
+        tables.execute(Objects.requireNonNull(jdbcTemplate.getDataSource()));
+    }
+
+    @AfterEach
+    public void delete() {
+        JdbcTestUtils.dropTables(jdbcTemplate, "users");
     }
 
 
-    /**
-     * Проверка существования пользователя, негативный тест
-     */
     @Test
-    public void checkUserExists1() {
-        try {
-            Assertions.assertNotNull(database.getUserByLogin("correct_email@mail.ru"));
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+    public void getUsers() {
+        List<User> usersCurrent = userDao.getUsers();
+        List<User> usersExpected = new ArrayList<>();
+        usersExpected.add(new User(4, "galik2", "1234", false));
+        usersExpected.add(new User(14, "galik3", "12345", false));
+        usersExpected.add(new User(55, "galik4", "123456", false));
+        Assertions.assertEquals(usersExpected, usersCurrent);
     }
 
-    /**
-     * Проверка подключения к бд. Позитивный тест.
-     */
     @Test
-    public void checkConnection() {
-        try {
-            Assertions.assertTrue(database.isConnect());
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+    public void countingUsers() {
+        int currentCount = userDao.getUsers().size();
+        Assertions.assertEquals(3, currentCount);
     }
 
-    /**
-     * Проверка добавления данных в бд. Один позитивный кейс.
-     */
     @Test
-    public void checkAddingData() {
-        Assertions.assertTrue(User.registration("correct_email@mail.ru", "12345678"));
+    public void registrationUser() {
+        userDao.addUser(user);
+        User currentUser = userDao.getUserByLogin(user.getLogin());
+        Assertions.assertEquals(user, currentUser);
     }
 
-    /**
-     * Проверка существования пользователя, позитивный тест тест
-     */
     @Test
-    public void checkUserExists2() {
-        try {
-            Assertions.assertNotNull(database.getUserByLogin("correct_email@mail.ru"));
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+    public void deleteUser() {
+        userDao.deleteUserById(user.getId());
+        user = userDao.getUserByLogin(user.getLogin());
+        Assertions.assertNull(user);
     }
 
-    /**
-     * Проверка выхода с учетной записи. Один позитивный тест.
-     * Предварительные условия: нужно залогиниться
-     */
-    @Test
-    public void checkLogout1() {
-        /**
-         * Предварительные условия
-         */
-        User.login("correct_email@mail.ru", "12345678");
-        /**
-         * Тест
-         */
-        Assertions.assertTrue(User.logout("correct_email@mail.ru"));
-    }
 
-    /**
-     * Проверка выхода с учетной записи. Один негативный тест.
-     * Предварительные условия: нужно не быть залогиненым
-     */
-    @Test
-    public void checkLogout2() {
-        Assertions.assertFalse(User.logout("correct_email@mail.ru"));
-    }
 
-    /**
-     * Удаление всех таблиц бд
-     */
-    @AfterAll
-    public static void finish() {
-        try {
-            SqlRunner.executeSqlFile(GetProperties.PATH_TO_CLEAR_SQL);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
 }
